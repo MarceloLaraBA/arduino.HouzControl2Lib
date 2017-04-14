@@ -43,6 +43,7 @@ public:
 	u8	id;
 	u8	cmd;
 	u32	payload;
+	u32 raw;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -54,13 +55,13 @@ public:
 
 	unsigned long encode(u8 _cmd, u8 deviceId, u32 devicePayload);
 	deviceData decode(u32 rawData);
+	String deviceToString(deviceData device);
 
 	bool radioSetup(byte _rfStatusLed);
 	bool radioReady();
 	bool radioSend(u8 deviceCmd, u8 deviceId, u32 devicePayload);
-
 	bool radioRead();
-	void radioWrite(u32 rfMessage);
+	bool radioWrite(u32 rfMessage);
 	deviceData receivedData();
 
 private:

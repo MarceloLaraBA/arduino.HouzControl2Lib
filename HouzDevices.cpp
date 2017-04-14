@@ -1,3 +1,9 @@
+/*
+Name:		master_logger.ino
+Created:	13-Apr-17 22:55:23
+Author:	DarkAngel
+*/
+
 #include "Arduino.h"
 #include "HouzDevices.h"
 
@@ -83,20 +89,24 @@ bool HouzDevices::radioRead()
 };
 
 bool HouzDevices::radioSend(u8 deviceCmd, u8 deviceId, u32 devicePayload) {
-	radioWrite(encode(deviceCmd, deviceId, devicePayload));
+	return radioWrite(encode(deviceCmd, deviceId, devicePayload));
 }
 
-void HouzDevices::radioWrite(u32 rfMessage) {
-	if (!radio_status) { return; };
+bool HouzDevices::radioWrite(u32 rfMessage) {
+	if (!radio_status) { return false; };
+	bool result; 
 	radio->stopListening();
 	if (!radio->write(&rfMessage, sizeof(unsigned long))) {
 		console->println(F("failed"));
+		result = false;
 	}
 	else {
 		console->print("sent> 0x");
 		console->println(rfMessage, HEX);
+		result = true;
 	}
 	radio->startListening();
+	return result;
 };
 
 unsigned long HouzDevices::encode(byte _cmd, u8 deviceId, u32 devicePayload)
@@ -129,3 +139,19 @@ deviceData HouzDevices::receivedData() {
 	return device;
 };
 
+String HouzDevices::deviceToString(deviceData device) {
+	if (!device.hasData) {
+		return "[device has no data]";
+	}
+	String result;
+	result = "[id:";
+	result = result + (device.id);
+	result = result + ("|cmd:");
+	result = result + (device.cmd);
+	result = result + ("|payload:");
+	result = result + (device.payload);
+	result = result + ("|raw:");
+	result = result + (device.raw);
+	result = result + ("]");
+	return result;
+};
