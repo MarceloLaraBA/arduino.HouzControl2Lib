@@ -25,9 +25,10 @@ HouzDevices::HouzDevices(byte NodeId, RF24 &_radio, byte _rfStatusLed, Print &se
 	console = &serial;
 	radio = &_radio;
 	node_id = NodeId;
+	rfStatusLed = _rfStatusLed;
 };
 
-bool HouzDevices::radioSetup(byte _rfStatusLed)
+bool HouzDevices::radioSetup()
 {
 	console->println("::RF setup");
 	radio_status = 0;
@@ -52,7 +53,6 @@ bool HouzDevices::radioSetup(byte _rfStatusLed)
 		radio->startListening();
 		radio_status = 1;
 	}
-	rfStatusLed = _rfStatusLed;
 	pinMode(rfStatusLed, OUTPUT);
 	return true;
 };
@@ -101,7 +101,7 @@ bool HouzDevices::radioWrite(u32 rfMessage) {
 		result = false;
 	}
 	else {
-		console->print("sent> 0x");
+		console->print("RF sent> 0x");
 		console->println(rfMessage, HEX);
 		result = true;
 	}
@@ -144,14 +144,14 @@ String HouzDevices::deviceToString(deviceData device) {
 		return "[device has no data]";
 	}
 	String result;
-	result = "[id:";
-	result = result + (device.id);
-	result = result + ("|cmd:");
-	result = result + (device.cmd);
-	result = result + ("|payload:");
-	result = result + (device.payload);
-	result = result + ("|raw:");
-	result = result + (device.raw);
+	result = "[id:0x";
+	result = result + String(device.id, HEX);
+	result = result + ("|cmd:0x");
+	result = result + String(device.cmd, HEX);
+	result = result + ("|payload:0x");
+	result = result + String(device.payload, HEX);
+	result = result + ("|raw:0x");
+	result = result + String(device.raw, HEX);
 	result = result + ("]");
 	return result;
 };

@@ -57,7 +57,7 @@ public:
 	deviceData decode(u32 rawData);
 	String deviceToString(deviceData device);
 
-	bool radioSetup(byte _rfStatusLed);
+	bool radioSetup();
 	bool radioReady();
 	bool radioSend(u8 deviceCmd, u8 deviceId, u32 devicePayload);
 	bool radioRead();
