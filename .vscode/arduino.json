@@ -1,5 +1,5 @@
 {
     "board": "arduino:avr:uno",
-    "port": "COM3",
+    "port": "COM10",
     "sketch": "..\\..\\HouzControl2\\master_logger\\master_logger.ino"
 }
