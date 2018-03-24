@@ -67,6 +67,36 @@ void HouzDevices::init(byte NodeId, RF24 &_radio, byte _rfStatusLed, Stream &ser
 
 }
 
+bool HouzDevices::setup() {
+	radioSetup();
+	console->println("\n\r-- " + node_name + " ready --------------------");
+	return true;
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Commands
+
+bool HouzDevices::hasData() {
+
+	//listeners
+	if (radioRead()) return true;
+	if (serialRead()) return true;
+
+	//processes
+	radioWrite();
+	return !commandsQueue.isEmpty();
+};
+
+void HouzDevices::pushData(deviceData device) {
+	console->println("[commandsQueue] + " + deviceToString(device));
+	commandsQueue.enqueue(device);
+};
+
+deviceData HouzDevices::getData() {
+	return commandsQueue.dequeue();
+};
+
+
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -93,7 +123,6 @@ void HouzDevices::statusLedBlink(int numTimes) {
 			delay(2);
 		}
 	}
-
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -117,9 +146,7 @@ bool HouzDevices::radioSetup()
 
 	//determine device pipes
 	setPipes(node_id);
-	console->print("device: ");
-	console->print(node_name);
-	console->print(" [");
+	console->print("device: " + node_name + " [");
 	console->print(node_id);
 	console->println("]");
 
@@ -194,56 +221,51 @@ bool HouzDevices::radioRead()
 	}
 
 	//decode payload
-	_device = decode(_radioPayLoad, _radioNode);
+	deviceData _device = decode(_radioPayLoad, _radioNode);
 	_radioNode = 0;
 	_radioPayLoad = 0;
 
 	//server must notify host
 	if (node_id == server_node) 
-		console->println(packetToString(action_rfReceived, receivedData()));
+		console->println(packetToString(action_rfReceived, _device));
 
 	//prepare for next packet
 	radio->startListening();
 
-	//handle pong back
+	//handle pong back command
 	if (_device.hasData && _device.id == node_id && _device.cmd == CMD_QUERY) {
 		radioSend(CMD_STATUS, _device.id, !_device.payload);
 		return false;
 	}
 
+	//handle command
+	pushData(_device);
+
 	return _device.hasData;
 };
 
-deviceData HouzDevices::receivedData() {
-	return _device;
-};
 
+bool HouzDevices::radioSend(deviceData device) {
+	return radioSend(device, device.node);
+};
+bool HouzDevices::radioSend(deviceData device, byte nodeId) {
+	return radioSend(device.cmd, device.id, device.payload, nodeId);
+};
 bool HouzDevices::radioSend(u8 deviceCmd, u8 deviceId, u32 devicePayload) {
 	return radioSend(deviceCmd, deviceId, devicePayload, server_node);
 };
-
-bool HouzDevices::radioSend(deviceData device) {
-	bool result = radioSend(device.cmd, device.id, device.payload, device.node);
-	console->println(packetToString((result ? action_rfSentOk : action_rfSentFail), device));
-	return true;
-};
-
 bool HouzDevices::radioSend(u8 deviceCmd, u8 deviceId, u32 devicePayload, byte nodeId) {
-
 	//enqueue send
 	radioPacket packet;
 	packet.message = encode(deviceCmd, deviceId, devicePayload);
 	packet.node = nodeId;
 	packet.retries = 0;
 	radioSendQueue.enqueue(packet);
-	console->println("[radioSend] packet enqueued");
+
+	console->print("[radioSend] 0x");
+	console->print(deviceId, HEX);
+	console->println(" packet enqueued");
 	return true;
-
-	//return radioWrite(encode(deviceCmd, deviceId, devicePayload), nodeId);
-};
-
-void HouzDevices::taskManager() {
-	radioWrite(); //radio send
 };
 
 bool HouzDevices::radioWrite() {
@@ -317,17 +339,11 @@ deviceData HouzDevices::decode(u32 rawData, u32 nodeId) {
 	return decoded;
 };
 
-unsigned long HouzDevices::encode(u8 _cmd, u8 deviceId, u32 devicePayload)
-{
-	unsigned long retVal = 0xD;
-	retVal = (retVal << 4) + _cmd;
-	retVal = (retVal << 8) + deviceId;
-	retVal = (retVal << 16) + devicePayload;
-	return retVal;
-}
-
-deviceData HouzDevices::decode(String str) {
+deviceData HouzDevices::decode(String str) { //from serial
 	deviceData dev;
+	if (str.length() != 10 || str[0] != 'N' || str[2] != 'D')
+		return dev;
+
 	dev.node = StrToHex(str.substring(1, 2));
 	dev.cmd = StrToHex(str.substring(3, 4));
 	dev.id = StrToHex(str.substring(4, 6));
@@ -335,6 +351,15 @@ deviceData HouzDevices::decode(String str) {
 	dev.raw = StrToHex(str.substring(3, 10));
 	dev.hasData = (dev.id != 0);
 	return dev;
+}
+
+unsigned long HouzDevices::encode(u8 _cmd, u8 deviceId, u32 devicePayload)
+{
+	unsigned long retVal = 0xD;
+	retVal = (retVal << 4) + _cmd;
+	retVal = (retVal << 8) + deviceId;
+	retVal = (retVal << 16) + devicePayload;
+	return retVal;
 }
 
 String HouzDevices::deviceToString(deviceData device) {
@@ -370,55 +395,37 @@ bool HouzDevices::serialRead(){
   while (console->available() > 0) {
     int inChar = console->read();
 	if (inChar == '\n') {
-		return handleCommand(serialBuffer);
+		console->println("> " + serialBuffer);
+		handleCommand(decode(serialBuffer));
 	}else{
 		serialBuffer += (char)inChar;
 	}
   }
   return false;
 }
-deviceData HouzDevices::serialData() {
-	if (serialBuffer[0] != 'N') {
-		console->println("\n> " + serialBuffer);
-		return;
-	}
 
-	deviceData dev = decode(serialBuffer);
-	serialBuffer = "";
-	return dev;
-};
+bool HouzDevices::handleCommand(deviceData device){
 
-bool HouzDevices::handleCommand(String inCommand){
-	
-//unknown command
-	if (serialBuffer.length() != 10 || serialBuffer[0] != 'N' || serialBuffer[2] != 'D') {
-		_device.hasData = false;
-
-		//ignore command on server
-		if (node_id == server_node) {
-			console->println("\n{act:0, error: \"" + inCommand + "\"}");
+//server node handling
+	if (node_id == server_node) {
+		if (!device.hasData) {
+			console->println("\n{act:0, error: \"" + serialBuffer + "\"}");
 			serialBuffer = "";
 			return false;
 		}
-
-		return true;
-	};
-
-//decode device
-	_device = decode(serialBuffer);
-	if (!_device.hasData) return true;
-	serialBuffer = "";
-
-
-//radio must be ready
-	if (!radio_status) {
-		console->println("\n{act:0, error: \"radio not ready\"}");
+		serialBuffer = "";
+		radioSend(device);
 		return false;
-	};
+	}
 
-//send 
-    radioSend(_device);
-	return false;
+//client nodes
+	if (!device.hasData)
+		device.message = serialBuffer;
+
+	serialBuffer = "";
+	pushData(device);
+	return true;
+
 };
  
 

@@ -38,10 +38,12 @@
 // Living
 #define living_node			0x3	 //N1DC04F0F0\n
 #define living_switch		0x31
-#define living_switchLed	0x32 //N1DC320099\n
-#define living_mainLight	0x33 //N1DC33F0F0\n
-#define living_dicroLight	0x34 //N1DC34F0F0\n
-#define living_auxLight		0x35 //N1DC35F0F0\n
+#define living_switchLed	0x32 //N1DC320099\n 
+#define living_mainLight	0x33 //N1DC330002\n - center
+#define living_dicroLight	0x34 //N1DC340000\n - 2x4 dicro array
+#define living_spotLight	0x35 //N1DC350000\n - spotlights
+#define living_auxLight		0x36 //N1DC360000\n - guidance leds
+#define living_arrLight		0x37 //N1DC370000\n - raw fx controller
 #define living_AC			0x38 //N1DC380001\n
 #define living_AC_temp		0x39 //N1DC390018\n
 
@@ -49,17 +51,20 @@
 // Frontdesk
 #define frontdesk_node		0x5
 
-// Decoded result
+// device command
 class deviceData {
 public:
-	u32 raw;
+	u32  raw;
 	bool hasData;
 
-	u8	id;
-	u8	media;
-	u32 node;
-	u8	cmd;
-	u32 payload;
+	u8	 id;
+	u32  payload;
+
+	byte node;
+	u8	 cmd;
+	u8	 media;
+
+	String message;
 };
 
 class serverPacket {
@@ -85,7 +90,7 @@ public:
 
 #define media_serial			0x0
 #define media_rf				0x1
-#define media_serial			0x2
+#define media_ir				0x2
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -95,32 +100,39 @@ class HouzDevices{
 public:
 	HouzDevices(byte NodeId, RF24 &_radio, byte _rfStatusLed, Stream &serial);
 	HouzDevices(byte NodeId, RF24 &_radio, byte _rfStatusLed, Stream &serial, u8 dataPin, u8 latchPin, u8 clockPin);
-	void taskManager();
+	bool setup();
 
+	//commands
+	bool hasData();
+	void pushData(deviceData device);
+	deviceData getData();
 
-	deviceData receivedData();
 	deviceData decode(u32 rawData, u32 rfNodeStation);
 	unsigned long encode(u8 _cmd, u8 deviceId, u32 devicePayload);
 	String deviceToString(deviceData device);
 	String packetToString(serverPacket packet);	
 	String packetToString(u8 action, deviceData device);	
 
+	//radio
 	bool radioSetup();
 	bool radioReady();
-	bool radioRead();
 	bool radioSend(deviceData device);
+	bool radioSend(deviceData device, byte nodeId);
 	bool radioSend(u8 deviceCmd, u8 deviceId, u32 devicePayload);
 	bool radioSend(u8 deviceCmd, u8 deviceId, u32 devicePayload, byte nodeId);
 
+	//serial
 	bool serialRead();
 	deviceData serialData();
 
+	//output
 	void setIo(u32 io, bool status);
 	void setIo(word ioRawValue);
 	word getIoStatus();
 	bool getIo(u32 io);
 	void ioAnim(u8 animLength, word anim[], u8 delay);
 
+	//helpers
 	unsigned long StrToHex(char str[]);
 	unsigned long StrToHex(String str);
 	deviceData decode(String str);
@@ -130,6 +142,12 @@ public:
 private:
 	void init(byte NodeId, RF24 &_radio, byte _rfStatusLed, Stream & serial);
 
+	//commands
+	QueueArray<deviceData> commandsQueue;
+
+	//radio
+	RF24* radio;
+	void setPipes(byte nodeId);
 
 	byte node_id;
 	String node_name;
@@ -137,14 +155,17 @@ private:
 	byte rfStatusLed;
 	unsigned long _radioPayLoad;
 	uint8_t _radioNode;
+	
+	bool radioRead();
+	bool radioWrite();
+	QueueArray<radioPacket> radioSendQueue;
+
+	//serial
 	Stream* console;
-	RF24* radio;
-	void setPipes(byte nodeId);
-
-	deviceData _device;
 	String serialBuffer;
-	bool handleCommand(String inCommand);
+	bool handleCommand(deviceData inCommand);
 
+	//output
 	bool ioReady;
 	u8 dataPin;
 	u8 latchPin;
@@ -152,6 +173,4 @@ private:
 	word ioStatus;
 	void ioRender();
 
-	bool radioWrite();
-	QueueArray<radioPacket> radioSendQueue;
 };
